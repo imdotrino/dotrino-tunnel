@@ -1,0 +1,19 @@
+{
+  "name": "@dotrino/tunnel",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Túnel reverso (ngrok autohospedado) del ecosistema Dotrino: expón un puerto/servicio local en una URL pública. Lib + CLI.",
+  "keywords": ["tunnel", "reverse", "ngrok", "webhook", "localhost", "dotrino"],
+  "license": "MIT",
+  "author": "Dotrino",
+  "homepage": "https://r.dotrino.com",
+  "repository": { "type": "git", "url": "https://github.com/imdotrino/dotrino-tunnel" },
+  "main": "index.js",
+  "exports": { ".": "./index.js" },
+  "bin": { "dotrino-tunnel": "bin/cli.js" },
+  "files": ["index.js", "bin/cli.js", "README.md"],
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "ws": "8.18.0"
+  }
+}
