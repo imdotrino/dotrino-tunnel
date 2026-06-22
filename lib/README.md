@@ -42,6 +42,28 @@ t.close()
 
 `req` = `{ method, path, headers, body }` (body es `Buffer|null`).
 
+## Llaves
+
+La llave identifica tu túnel y va en la URL pública. Es un secreto aleatorio
+alfanumérico con formato `^[A-Za-z0-9]{16,48}$`. Para crear una válida **desde tu
+código** usa el helper exportado (así no tienes que conocer el formato ni la entropía):
+
+```js
+import { createTunnel, generateKey } from '@dotrino/tunnel'
+
+const key = generateKey()        // 32 alfanuméricos, formato válido garantizado
+// guárdala: tu URL pública será https://r.dotrino.com/<key>
+const t = await createTunnel({ target: 3000, key })
+```
+
+- Si **no** pasas `key`, `createTunnel` genera una y la devuelve en `t.key`.
+- También puedes **traer la tuya** (cualquier string que cumpla el formato):
+  ```sh
+  dotrino-tunnel 3000 --key $(openssl rand -hex 16)
+  ```
+  El relay rechaza llaves con formato inválido (guiones, demasiado cortas, etc.);
+  `generateKey()` te evita ese error.
+
 ## Notas
 - La **llave va en la URL pública** e identifica el túnel: quien tenga la URL puede
   usarlo. Es un tool de dev/testing.

@@ -1,6 +1,6 @@
 {
   "name": "@dotrino/tunnel",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Túnel reverso autohospedado del ecosistema Dotrino: expón un puerto/servicio local en una URL pública. Lib + CLI.",
   "keywords": ["tunnel", "reverse", "webhook", "localhost", "dotrino"],
