@@ -1,11 +1,11 @@
-# Dotrino Tunnel — túnel reverso (ngrok autohospedado)
+# Dotrino Tunnel — túnel reverso autohospedado
 
 > **Parte del ecosistema [Dotrino](https://dotrino.com).** Tu URL, en tu servidor, bajo tus reglas — sin anuncios, sin cookies, sin rastreo.
 
 Expón un puerto/servicio local en una **URL pública** (`https://r.dotrino.com/<llave>/…`)
 sin abrir puertos ni configurar tu router. Un **relay** público recibe las requests y
 las reenvía por WebSocket a tu **agente** (tu máquina o el navegador); la respuesta
-vuelve al cliente. Tipo ngrok, pero autohospedado y parte del ecosistema.
+vuelve al cliente. Autohospedado y parte del ecosistema.
 
 La **llave** (secreto de alta entropía) va en la URL: identifica el túnel y autoriza al
 agente. *Quien tenga la URL puede usar el túnel* → es un tool de dev/testing. Payload

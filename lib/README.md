@@ -1,6 +1,6 @@
 # @dotrino/tunnel
 
-Túnel reverso (ngrok autohospedado) del ecosistema [Dotrino](https://dotrino.com).
+Túnel reverso autohospedado del ecosistema [Dotrino](https://dotrino.com).
 Expón un puerto o servicio local en una URL pública — como código o como CLI.
 
 ## CLI

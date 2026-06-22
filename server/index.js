@@ -2,7 +2,7 @@
 /**
  * dotrino-tunnel — relay (servidor) del túnel reverso del ecosistema Dotrino.
  *
- * Hace de ngrok autohospedado: un agente (lib/CLI o la web de testing) se conecta
+ * Túnel reverso autohospedado: un agente (lib/CLI o la web de testing) se conecta
  * por WebSocket a `/_agent?key=<LLAVE>` y queda registrado. Las requests públicas a
  *   https://r.dotrino.com/<LLAVE>/<ruta>
  * se reenvían al agente por el WS y la respuesta vuelve al cliente HTTP.
