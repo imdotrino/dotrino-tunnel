@@ -98,8 +98,8 @@ function deliverResponse (m) {
   if (!p) return
   clearTimeout(p.timer); pending.delete(m.id)
   const { res } = p
+  // CORS lo decide el agente/host (configurable); el relay solo pasa lo que venga.
   const headers = cleanHeaders(m.headers)
-  headers['access-control-allow-origin'] = headers['access-control-allow-origin'] || '*'
   const buf = m.body ? Buffer.from(m.body, 'base64') : Buffer.alloc(0)
   if (buf.length > MAX_BODY) return json(res, 502, { error: 'response too large', limit: MAX_BODY })
   delete headers['content-length']

@@ -41,6 +41,10 @@ dotrino-install{--cc-install-accent:#00658c;--cc-install-modal-bg:#fff;--cc-inst
 .urlbox code{flex:1;min-width:0;font-family:var(--mono);font-size:.82rem;background:var(--ink);border:1px solid var(--line2);border-radius:12px;padding:.6rem .7rem;overflow-x:auto;white-space:nowrap;display:flex;align-items:center}
 .hint{font-size:.8rem;color:var(--faint);margin-top:.6rem;line-height:1.5}
 .inline{font-family:var(--mono);background:var(--ink);border:1px solid var(--line);border-radius:7px;padding:.08rem .35rem;font-size:.78rem;color:var(--accent2)}
+.copycurl{border:1px solid var(--line2);background:var(--surface);color:var(--accent);font:inherit;font-weight:700;font-size:.72rem;padding:.1rem .5rem;border-radius:var(--pill);cursor:pointer;white-space:nowrap}
+.copycurl:hover{background:#f0f5f8}
+.cors-field{margin-top:.8rem;padding-top:.8rem;border-top:1px solid var(--line)}
+.cors-field input{font-family:var(--mono);font-size:.82rem}
 
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;font:inherit;font-weight:700;font-size:.9rem;padding:.6rem .9rem;border-radius:var(--pill);border:1px solid transparent;cursor:pointer}
 .btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent-press)}

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 
 /* ---------------- i18n ---------------- */
 const I18N = {
@@ -9,6 +9,7 @@ const I18N = {
     status: 'Estado', connected: 'Conectado', connecting: 'Conectando…', disconnected: 'Desconectado',
     response: 'Respuesta automática', mode: 'Modo', fixed: 'Fija', echo: 'Eco (devuelve la request)',
     code: 'Código', ctype: 'Content-Type', body: 'Cuerpo',
+    cors: 'CORS (Allow-Origin)', corsPh: '*  o  https://tu-sitio.com   (vacío = sin CORS)',
     inspector: 'Requests entrantes', none: 'Aún no llega ninguna request. Abre tu URL pública o mándale un webhook.',
     clear: 'Limpiar', headers: 'Cabeceras', reqbody: 'Cuerpo', empty: '(vacío)',
     hintCurl: 'Pruébalo:', privacy: 'Todo ocurre en tu navegador. La llave va en la URL e identifica tu túnel; quien tenga la URL puede usarlo.',
@@ -20,6 +21,7 @@ const I18N = {
     status: 'Status', connected: 'Connected', connecting: 'Connecting…', disconnected: 'Disconnected',
     response: 'Automatic response', mode: 'Mode', fixed: 'Fixed', echo: 'Echo (returns the request)',
     code: 'Code', ctype: 'Content-Type', body: 'Body',
+    cors: 'CORS (Allow-Origin)', corsPh: '*  or  https://your-site.com   (empty = no CORS)',
     inspector: 'Incoming requests', none: 'No requests yet. Open your public URL or send it a webhook.',
     clear: 'Clear', headers: 'Headers', reqbody: 'Body', empty: '(empty)',
     hintCurl: 'Try it:', privacy: 'Everything happens in your browser. The key goes in the URL and identifies your tunnel; whoever has the URL can use it.',
@@ -49,6 +51,16 @@ const resMode = ref('fixed')         // fixed | echo
 const resStatus = ref(200)
 const resType = ref('application/json')
 const resBody = ref('{\n  "ok": true,\n  "from": "dotrino-tunnel"\n}')
+const cors = ref(localStorage.getItem('tunnel.cors') || '')
+watch(cors, (v) => localStorage.setItem('tunnel.cors', v))
+function corsHeaders () {
+  if (!cors.value.trim()) return {}
+  return {
+    'access-control-allow-origin': cors.value.trim(),
+    'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    'access-control-allow-headers': '*',
+  }
+}
 
 /* ---------------- estado WS ---------------- */
 const status = ref('connecting')     // connecting | connected | disconnected
@@ -83,8 +95,13 @@ function onReq (m) {
   const bodyStr = m.body ? b64ToStr(m.body) : ''
   requests.value.unshift({ id: m.id, method: m.method, path: m.path, headers: m.headers || {}, body: bodyStr, at: new Date().toLocaleTimeString(lang.value), open: false })
   if (requests.value.length > 100) requests.value.pop()
+  // CORS preflight: responde 204 con las cabeceras y no toca la respuesta configurada.
+  if (m.method === 'OPTIONS' && cors.value.trim()) {
+    send({ type: 'res', id: m.id, status: 204, headers: corsHeaders(), body: null })
+    return
+  }
   // responder
-  let status_ = resStatus.value, headers = {}, outBody
+  let status_ = resStatus.value, headers = { ...corsHeaders() }, outBody
   if (resMode.value === 'echo') {
     headers['content-type'] = 'application/json'
     outBody = JSON.stringify({ method: m.method, path: m.path, headers: m.headers, body: bodyStr || null }, null, 2)
@@ -102,6 +119,8 @@ const copiedFlag = ref(false)
 function copyUrl () { navigator.clipboard?.writeText(publicUrl.value).then(() => { copiedFlag.value = true; setTimeout(() => (copiedFlag.value = false), 1400) }) }
 
 const curlExample = computed(() => `curl ${publicUrl.value}/hola`)
+const curlCopied = ref(false)
+function copyCurl () { navigator.clipboard?.writeText(curlExample.value).then(() => { curlCopied.value = true; setTimeout(() => (curlCopied.value = false), 1400) }) }
 
 onMounted(() => { document.documentElement.lang = lang.value; connect() })
 onUnmounted(() => { closed = true; try { ws?.close() } catch {} })
@@ -137,7 +156,7 @@ onUnmounted(() => { closed = true; try { ws?.close() } catch {} })
               <button class="btn btn-primary" @click="copyUrl">{{ copiedFlag ? t.copied : t.copy }}</button>
             </div>
             <button class="btn btn-link" @click="regen">↻ {{ t.regen }}</button>
-            <p class="hint">{{ t.hintCurl }} <code class="inline">{{ curlExample }}</code></p>
+            <p class="hint">{{ t.hintCurl }} <code class="inline">{{ curlExample }}</code> <button class="copycurl" @click="copyCurl">{{ curlCopied ? '✓ ' + t.copied : t.copy }}</button></p>
           </div>
 
           <div class="card">
@@ -154,6 +173,7 @@ onUnmounted(() => { closed = true; try { ws?.close() } catch {} })
               <label class="field"><span>{{ t.body }}</span><textarea v-model="resBody" rows="6" spellcheck="false"></textarea></label>
             </template>
             <p v-else class="hint">{{ t.echo }}: 200 · application/json con el método, ruta, cabeceras y cuerpo de cada request.</p>
+            <label class="field cors-field"><span>{{ t.cors }}</span><input v-model="cors" :placeholder="t.corsPh" spellcheck="false" /></label>
           </div>
         </div>
 
