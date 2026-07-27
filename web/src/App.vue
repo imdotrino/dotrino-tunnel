@@ -14,6 +14,7 @@ const I18N = {
     clear: 'Limpiar', headers: 'Cabeceras', reqbody: 'Cuerpo', empty: '(vacío)',
     hintCurl: 'Pruébalo:', privacy: 'Todo ocurre en tu navegador. La llave va en la URL e identifica tu túnel; quien tenga la URL puede usarlo.',
     cli: 'Para exponer un puerto local de verdad, usa la CLI:',
+    cliNoNode: '¿No tienes Node? Un comando lo resuelve:',
   },
   en: {
     tagline: 'Expose this browser at a public URL and inspect what arrives. Every request to your URL shows up below, and you decide what to answer.',
@@ -26,6 +27,7 @@ const I18N = {
     clear: 'Clear', headers: 'Headers', reqbody: 'Body', empty: '(empty)',
     hintCurl: 'Try it:', privacy: 'Everything happens in your browser. The key goes in the URL and identifies your tunnel; whoever has the URL can use it.',
     cli: 'To expose a real local port, use the CLI:',
+    cliNoNode: 'No Node? One command solves it:',
   },
 }
 const LANG_KEY = 'tunnel.lang'
@@ -205,6 +207,8 @@ onUnmounted(() => { closed = true; try { ws?.close() } catch {} })
       </div>
 
       <p class="cli">{{ t.cli }} <code class="inline">npx @dotrino/tunnel 3000</code></p>
+      <p class="cli">{{ t.cliNoNode }}
+        <code class="inline">curl -fsSL https://install.dotrino.com/install.sh | sh -s -- @dotrino/tunnel 3000</code></p>
       <p class="privacy">{{ t.privacy }}</p>
     </main>
   </div>
