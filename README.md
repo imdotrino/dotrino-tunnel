@@ -34,6 +34,29 @@ modo *eco*). Ideal para probar webhooks sin levantar nada local.
 
 ## Estructura del repo
 - **`server/`** — el relay (Node + `ws`). Sirve además la web de testing en `/`.
+
+## Despliegue del relay (VPS de proxy, `74.208.192.49`)
+
+Corre con **PM2**, igual que `cc-proxy` y el signer. Hasta el 2026-07-27 se arrancaba a
+mano: se cayó y `r.dotrino.com` estuvo devolviendo **502** sin que nada lo levantara.
+
+```sh
+cd ~/dotrino-tunnel && git pull            # traer cambios
+cd web && npm run build                    # la web de testing la sirve el relay
+cd ../server
+STATIC_DIR=$HOME/dotrino-tunnel/web/dist PORT=7700 \
+  pm2 start index.js --name dotrino-tunnel --time
+pm2 save                                   # sin esto no vuelve tras un reinicio
+```
+
+Dos cosas que hay que saber:
+
+- **`STATIC_DIR` es obligatorio.** Por defecto el relay sirve `server/public`, que **no
+  existe** en el repo: la web vive en `web/dist`. Sin esa variable, `/` no sirve nada.
+- **nginx manda `r.dotrino.com` a `127.0.0.1:7700`** (`/etc/nginx/sites-enabled/r.dotrino.com`).
+  Si cambias `PORT`, cambia también ahí.
+
+Actualizar: `git pull`, `npm run build` en `web/` y `pm2 restart dotrino-tunnel`.
 - **`lib/`** — el paquete npm `@dotrino/tunnel` (lib + CLI).
 - **`web/`** — la web de testing (Vite + Vue), se construye y la sirve el relay.
 
