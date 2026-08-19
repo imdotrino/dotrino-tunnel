@@ -30,10 +30,11 @@ const I18N = {
     cliNoNode: 'No Node? One command solves it:',
   },
 }
-const LANG_KEY = 'tunnel.lang'
-const lang = ref((localStorage.getItem(LANG_KEY) || (navigator.language || 'es').slice(0, 2)) === 'en' ? 'en' : 'es')
+// El idioma lo lleva <dotrino-topbar>: persiste la preferencia, pone
+// document.documentElement.lang y avisa por `dotrino-lang`. Aqui solo se escucha.
+const lang = ref((navigator.language || 'es').slice(0, 2) === 'en' ? 'en' : 'es')
 const t = computed(() => I18N[lang.value])
-const setLang = (l) => { lang.value = l; localStorage.setItem(LANG_KEY, l); document.documentElement.lang = l }
+const onLang = (e) => { lang.value = e.detail.lang }
 
 /* ---------------- llave + relay ---------------- */
 const RELAY = import.meta.env.VITE_RELAY || location.origin
@@ -124,23 +125,21 @@ const curlExample = computed(() => `curl ${publicUrl.value}/hola`)
 const curlCopied = ref(false)
 function copyCurl () { navigator.clipboard?.writeText(curlExample.value).then(() => { curlCopied.value = true; setTimeout(() => (curlCopied.value = false), 1400) }) }
 
-onMounted(() => { document.documentElement.lang = lang.value; connect() })
+onMounted(() => { connect() })
 onUnmounted(() => { closed = true; try { ws?.close() } catch {} })
 </script>
 
 <template>
   <div class="app">
-    <header class="topbar">
-      <div class="brand"><img src="/icon.svg" alt="" width="30" height="30" /><span>Dotrino Tunnel</span></div>
-      <div class="actions">
-        <div class="lang" role="group" aria-label="es / en">
-          <button :class="{ on: lang === 'es' }" @click="setLang('es')">ES</button>
-          <button :class="{ on: lang === 'en' }" @click="setLang('en')">EN</button>
-        </div>
-        <dotrino-install :lang="lang"></dotrino-install>
-        <dotrino-support href="https://ko-fi.com/dotrino" repo="imdotrino/dotrino-tunnel" discord="https://discord.gg/D648uq7cth" :lang="lang"></dotrino-support>
-      </div>
-    </header>
+    <dotrino-topbar
+      brand="Dotrino Tunnel"
+      icon="/icon.svg"
+      :lang="lang"
+      support-repo="imdotrino/dotrino-tunnel"
+      support-discord="https://discord.gg/D648uq7cth"
+      @dotrino-lang="onLang">
+      <dotrino-install :lang="lang"></dotrino-install>
+    </dotrino-topbar>
 
     <main class="wrap">
       <h1 class="tagline">{{ t.tagline }}</h1>

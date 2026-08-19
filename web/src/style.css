@@ -10,16 +10,13 @@
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{font-family:var(--font);background:var(--ink);color:var(--text);min-height:100vh}
 #app{min-height:100vh;display:flex;flex-direction:column}
+/* La barra la trae <dotrino-topbar> (CONVENCIONES §5). Aqui solo se le pasa
+   la paleta clara de esta pagina; el layout, la fila movil y el safe-area son
+   suyos. */
+dotrino-topbar{--dotrino-topbar-bg:rgba(244,247,249,.9);--dotrino-topbar-border:#e3e9ed;--dotrino-topbar-text:#181c1e;--dotrino-topbar-muted:#4a5560;--dotrino-topbar-accent:#00658c}
 dotrino-support{--ds-accent:#00658c;--ds-accent-press:#00506f;--ds-modal-bg:#fff;--ds-modal-text:#181c1e;--ds-modal-muted:#4a5560;--ds-modal-border:#e3e9ed;--ds-modal-hover:rgba(0,0,0,.06)}
 dotrino-install{--cc-install-accent:#00658c;--cc-install-modal-bg:#fff;--cc-install-modal-color:#181c1e}
 
-.topbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.6rem;padding:.8rem 1.1rem;padding-top:calc(.8rem + env(safe-area-inset-top));background:rgba(244,247,249,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
-.brand{display:flex;align-items:center;gap:.5rem;font-weight:700;font-size:1.15rem}
-.actions{display:flex;align-items:center;gap:.55rem}
-.lang{display:inline-flex;border:1px solid var(--line2);border-radius:var(--pill);overflow:hidden}
-.lang button{border:0;background:transparent;color:var(--dim);padding:.3rem .7rem;font:inherit;font-weight:700;cursor:pointer}
-.lang button.on{background:var(--accent);color:#fff}
-@media(max-width:560px){.brand{order:1}.actions{order:2;flex-basis:100%;justify-content:flex-end}}
 
 .wrap{flex:1;width:100%;max-width:1080px;margin:0 auto;padding:1.4rem 1.1rem 2.4rem}
 .tagline{font-size:1.02rem;font-weight:600;color:var(--dim);line-height:1.5;max-width:780px;margin:0 auto 1.3rem;text-align:center}
