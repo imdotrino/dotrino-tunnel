@@ -2,7 +2,7 @@
   "name": "@dotrino/tunnel",
   "version": "0.1.5",
   "type": "module",
-  "description": "Túnel reverso autohospedado del ecosistema Dotrino: expón un puerto/servicio local en una URL pública. Lib + CLI.",
+  "description": "T\u00fanel reverso autohospedado del ecosistema Dotrino: exp\u00f3n un puerto/servicio local en una URL p\u00fablica. Lib + CLI.",
   "keywords": [
     "tunnel",
     "reverse",
@@ -36,6 +36,11 @@
     "ws": "8.18.0"
   },
   "scripts": {
-    "test": "node --test --test-timeout 20000 --test-force-exit test/*.test.mjs"
+    "test": "node --test --test-timeout 20000 --test-force-exit test/*.test.mjs",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@types/node": "^22.0.0"
   }
 }
