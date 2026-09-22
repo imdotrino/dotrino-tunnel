@@ -132,6 +132,7 @@ onUnmounted(() => { closed = true; try { ws?.close() } catch {} })
 <template>
   <div class="app">
     <dotrino-topbar
+      profile
       brand="Dotrino Tunnel"
       icon="/icon.svg"
       :lang="lang"
