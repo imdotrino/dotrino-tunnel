@@ -3,16 +3,17 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Relay del t\u00fanel reverso de Dotrino (r.dotrino.com)",
+  "description": "Relay del túnel reverso de Dotrino (r.dotrino.com)",
   "scripts": {
     "start": "node index.js",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@dotrino/update": "0.7.0",
     "ws": "8.18.0"
   },
   "devDependencies": {
-    "typescript": "5.9.3",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "typescript": "5.9.3"
   }
 }

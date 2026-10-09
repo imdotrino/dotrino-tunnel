@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
 import { join, normalize, extname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { watchCheckout } from '@dotrino/update/checkout'
 
 const PORT = Number(process.env.PORT || 7700)
 const HOST = process.env.HOST || '127.0.0.1'
@@ -184,4 +185,6 @@ hb.unref?.()
 server.listen(PORT, HOST, () => {
   console.log(`dotrino-tunnel relay en http://${HOST}:${PORT}  (público: https://${PUBLIC_HOST})`)
   console.log(`límite payload: ${(MAX_BODY / 1024).toFixed(0)} KB · timeout: ${REQ_TIMEOUT / 1000}s`)
+  // §15: el relay se despliega desde git; lo que se le queda atrás es el checkout.
+  watchCheckout({ dir: fileURLToPath(new URL('.', import.meta.url)), repo: 'imdotrino/dotrino-tunnel', name: 'tunnel-relay' })
 })
