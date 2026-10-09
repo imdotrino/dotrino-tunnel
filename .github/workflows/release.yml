@@ -44,6 +44,12 @@ jobs:
       - run: npm i -g npm@latest
       - run: npm ci
 
+      # La suite levanta el RELAY de verdad (`../server/index.js`), que tiene sus propias
+      # dependencias. Sin ellas no arranca y la prueba falla por algo que no es un fallo.
+      - name: Dependencias del relay (las necesita la suite)
+        working-directory: server
+        run: npm ci
+
       # LAS PRUEBAS ANTES DE PUBLICAR. Una versión que no pasa su suite no llega a npm.
       - run: npm test
       # El registro de compatibilidad (dotrino-roadmap, CONVENCIONES §14): nada instalado en
