@@ -1,8 +1,8 @@
 {
   "name": "@dotrino/tunnel",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
-  "description": "T\u00fanel reverso autohospedado del ecosistema Dotrino: exp\u00f3n un puerto/servicio local en una URL p\u00fablica. Lib + CLI.",
+  "description": "Túnel reverso autohospedado del ecosistema Dotrino: expón un puerto/servicio local en una URL pública. Lib + CLI.",
   "keywords": [
     "tunnel",
     "reverse",
@@ -33,6 +33,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@dotrino/update": "0.7.0",
     "ws": "8.18.0"
   },
   "scripts": {
@@ -40,7 +41,7 @@
     "type-check": "tsc --noEmit"
   },
   "devDependencies": {
-    "typescript": "5.9.3",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "typescript": "5.9.3"
   }
 }
