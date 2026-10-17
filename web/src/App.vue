@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { keyFromBytes, agentWsUrl, corsHeadersFor } from '../../lib/shared.js'   // lo mismo que usa el agente
 
 /* ---------------- i18n ---------------- */
 const I18N = {
@@ -38,11 +39,7 @@ const onLang = (e) => { lang.value = e.detail.lang }
 
 /* ---------------- llave + relay ---------------- */
 const RELAY = import.meta.env.VITE_RELAY || location.origin
-const B62 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-function genKey (n = 32) {
-  const a = new Uint8Array(n); crypto.getRandomValues(a)
-  let s = ''; for (let i = 0; i < n; i++) s += B62[a[i] % 62]; return s
-}
+const genKey = (n = 32) => keyFromBytes(crypto.getRandomValues(new Uint8Array(n)))
 const KEY_STORE = 'tunnel.key'
 const key = ref(localStorage.getItem(KEY_STORE) || genKey())
 localStorage.setItem(KEY_STORE, key.value)
@@ -56,30 +53,17 @@ const resType = ref('application/json')
 const resBody = ref('{\n  "ok": true,\n  "from": "dotrino-tunnel"\n}')
 const cors = ref(localStorage.getItem('tunnel.cors') || '')
 watch(cors, (v) => localStorage.setItem('tunnel.cors', v))
-function corsHeaders () {
-  if (!cors.value.trim()) return {}
-  return {
-    'access-control-allow-origin': cors.value.trim(),
-    'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    'access-control-allow-headers': '*',
-  }
-}
+const corsHeaders = () => corsHeadersFor(cors.value) || {}
 
 /* ---------------- estado WS ---------------- */
 const status = ref('connecting')     // connecting | connected | disconnected
 const requests = ref([])
 let ws = null, closed = false, backoff = 500
 
-function wsUrl () {
-  const u = new URL(RELAY)
-  u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
-  u.pathname = '/_agent'; u.search = '?key=' + key.value
-  return u.toString()
-}
 function connect () {
   if (closed) return
   status.value = 'connecting'
-  ws = new WebSocket(wsUrl())
+  ws = new WebSocket(agentWsUrl(RELAY, key.value))
   ws.onopen = () => { backoff = 500 }
   ws.onmessage = (ev) => {
     let m; try { m = JSON.parse(ev.data) } catch { return }
