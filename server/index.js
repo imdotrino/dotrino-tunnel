@@ -140,7 +140,7 @@ server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url, `http://${PUBLIC_HOST}`)
   if (url.pathname !== '/_agent') { socket.destroy(); return }
   const key = url.searchParams.get('key') || ''
-  if (!KEY_RE.test(key)) { socket.write('HTTP/1.1 400 Bad Request\r\n\r\nllave inválida (16-48 alfanuméricos)'); socket.destroy(); return }
+  if (!KEY_RE.test(key)) { socket.write('HTTP/1.1 400 Bad Request\r\n\r\ninvalid key (16-48 alphanumeric characters)'); socket.destroy(); return }
   wss.handleUpgrade(req, socket, head, (ws) => registerAgent(ws, key))
 })
 
@@ -157,7 +157,7 @@ function registerAgent (ws, key) {
   tunnels.set(key, { ws, since: Date.now() })
   ws.isAlive = true
   safeSend(ws, { type: 'ready', key, url: `https://${PUBLIC_HOST}/${key}` })
-  console.log(`[agent] conectado key=${key} (${tunnels.size} túneles)`)
+  console.log(`[agent] connected key=${key} (${tunnels.size} tunnels)`)
 
   ws.on('message', (data) => {
     let m
@@ -167,7 +167,7 @@ function registerAgent (ws, key) {
   })
   ws.on('pong', () => { ws.isAlive = true })
   ws.on('close', () => {
-    if (tunnels.get(key)?.ws === ws) { tunnels.delete(key); console.log(`[agent] desconectado key=${key}`) }
+    if (tunnels.get(key)?.ws === ws) { tunnels.delete(key); console.log(`[agent] disconnected key=${key}`) }
   })
   ws.on('error', () => {})
 }
@@ -183,8 +183,8 @@ const hb = setInterval(() => {
 hb.unref?.()
 
 server.listen(PORT, HOST, () => {
-  console.log(`dotrino-tunnel relay en http://${HOST}:${PORT}  (público: https://${PUBLIC_HOST})`)
-  console.log(`límite payload: ${(MAX_BODY / 1024).toFixed(0)} KB · timeout: ${REQ_TIMEOUT / 1000}s`)
+  console.log(`dotrino-tunnel relay on http://${HOST}:${PORT}  (public: https://${PUBLIC_HOST})`)
+  console.log(`payload limit: ${(MAX_BODY / 1024).toFixed(0)} KB · timeout: ${REQ_TIMEOUT / 1000}s`)
   // §15: el relay se despliega desde git; lo que se le queda atrás es el checkout.
   watchCheckout({ dir: fileURLToPath(new URL('.', import.meta.url)), repo: 'imdotrino/dotrino-tunnel', name: 'tunnel-relay' })
 })
