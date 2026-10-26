@@ -1,6 +1,6 @@
 {
   "name": "@dotrino/tunnel",
-  "version": "0.1.8",
+  "version": "0.2.0",
   "type": "module",
   "description": "Túnel reverso autohospedado del ecosistema Dotrino: expón un puerto/servicio local en una URL pública. Lib + CLI.",
   "keywords": [
@@ -34,7 +34,12 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@dotrino/identity": "0.127.0",
+    "@dotrino/proxy-client": "0.45.1",
+    "@dotrino/remote-agent": "0.25.0",
+    "@dotrino/store": "0.12.4",
     "@dotrino/update": "0.7.0",
+    "@dotrino/vault": "0.104.0",
     "ws": "8.18.0"
   },
   "scripts": {

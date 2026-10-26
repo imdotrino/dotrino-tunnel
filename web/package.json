@@ -1,7 +1,7 @@
 {
   "name": "dotrino-tunnel-web",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Web de testing del túnel reverso de Dotrino (inspector + responder)",
   "scripts": {
@@ -11,6 +11,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@dotrino/identity": "0.127.0",
     "@dotrino/install": "0.3.3",
     "@dotrino/store": "0.12.3",
     "@dotrino/support": "0.9.3",

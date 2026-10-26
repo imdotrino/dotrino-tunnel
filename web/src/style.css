@@ -28,6 +28,8 @@ dotrino-install{--cc-install-accent:var(--dt-accent);--cc-install-modal-bg:var(-
 .dot.connected{background:var(--green-bg);color:var(--green)}
 .dot.connecting{background:var(--dt-surface-2);color:var(--amber)}
 .dot.disconnected{background:var(--dt-error-soft);color:var(--red)}
+.dot.rejected,.dot.noIdentity,.dot.replaced{background:var(--dt-error-soft);color:var(--red)}
+.warn{margin:.4rem 0 .6rem;padding:.6rem .8rem;border-radius:10px;background:var(--dt-error-soft);color:var(--dt-text);font-size:.9rem}
 
 .urlbox{display:flex;gap:.5rem;align-items:stretch}
 .urlbox code{flex:1;min-width:0;font-family:var(--mono);font-size:.82rem;background:var(--ink);border:1px solid var(--line2);border-radius:12px;padding:.6rem .7rem;overflow-x:auto;white-space:nowrap;display:flex;align-items:center}

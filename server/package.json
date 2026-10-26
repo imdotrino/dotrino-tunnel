@@ -1,7 +1,7 @@
 {
   "name": "dotrino-tunnel-server",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Relay del túnel reverso de Dotrino (r.dotrino.com)",
   "scripts": {
@@ -9,6 +9,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@dotrino/identity": "0.127.0",
     "@dotrino/update": "0.7.0",
     "ws": "8.18.0"
   },

@@ -3,22 +3,28 @@
  * dotrino-tunnel — relay (servidor) del túnel reverso del ecosistema Dotrino.
  *
  * Túnel reverso autohospedado: un agente (lib/CLI o la web de testing) se conecta
- * por WebSocket a `/_agent?key=<LLAVE>` y queda registrado. Las requests públicas a
+ * por WebSocket a `/_agent`, contesta al reto firmándolo con la llave de su APARATO y
+ * queda registrado. Las requests públicas a
  *   https://r.dotrino.com/<LLAVE>/<ruta>
  * se reenvían al agente por el WS y la respuesta vuelve al cliente HTTP.
  *
- * La LLAVE (secreto de alta entropía) va en la URL: identifica el túnel y autoriza
- * al agente. Quien tiene la URL controla el túnel (es un tool de dev/testing).
+ * La LLAVE de la URL no la elige el agente: es el hash de la llave pública del aparato
+ * (`tunnelKey`). Para atenderla hay que firmar el reto con esa llave y traer la cadena del
+ * acta que dice que el aparato es de una cuenta y puede firmar (`verifySignedFor`). Antes la
+ * llave era un secreto que cualquiera podía elegir, y quien la supiera echaba al agente
+ * legítimo y se quedaba con sus peticiones.
  *
- * Sin dependencias salvo `ws`. Sirve además la web de testing en `/`.
+ * Sirve además la web de testing en `/`.
  */
 import http from 'node:http'
 import { WebSocketServer } from 'ws'
 import { randomUUID } from 'node:crypto'
+import { verifySignedFor } from '@dotrino/identity/assertion'
 import { readFile, stat } from 'node:fs/promises'
 import { join, normalize, extname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { watchCheckout } from '@dotrino/update/checkout'
+import { tunnelKey, KEY_RE, AGENT_OP, AGENT_V, CLOSE_REPLACED, CLOSE_REJECTED } from '../lib/shared.js'
 
 const PORT = Number(process.env.PORT || 7700)
 const HOST = process.env.HOST || '127.0.0.1'
@@ -26,11 +32,18 @@ const MAX_BODY = Number(process.env.MAX_BODY || 1024 * 1024) // 1 MB por request
 const REQ_TIMEOUT = Number(process.env.REQ_TIMEOUT || 30000) // 30 s
 const PUBLIC_HOST = process.env.PUBLIC_HOST || 'r.dotrino.com'
 const STATIC_DIR = process.env.STATIC_DIR || join(fileURLToPath(new URL('.', import.meta.url)), 'public')
-const KEY_RE = /^[A-Za-z0-9]{16,48}$/
+// A quién va dirigida la firma del agente: el origen público del relay.
+const AUDIENCE = process.env.AUDIENCE || `https://${PUBLIC_HOST}`
+const HELLO_TIMEOUT = 15000 // para contestar al reto
 
-// registry: key -> { ws, since } ; pending: reqId -> { res, timer }
+// registry: key -> { ws, since, profileId } ; pending: reqId -> { res, timer }
 const tunnels = new Map()
 const pending = new Map()
+// FRESCURA: el `seq` más alto visto por cuenta. Una cadena vieja sigue verificando (es la
+// limitación declarada de `verifySignedBy`), así que un aparato que ya quitaste podría
+// seguir entrando con la que guardó. Una vez visto un acta más nueva de esa cuenta, lo
+// anterior no entra. En memoria: tras reiniciar el relay se aprende otra vez.
+const freshest = new Map()
 
 const json = (res, code, obj) => {
   const b = Buffer.from(JSON.stringify(obj))
@@ -139,9 +152,7 @@ const wss = new WebSocketServer({ noServer: true })
 server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url, `http://${PUBLIC_HOST}`)
   if (url.pathname !== '/_agent') { socket.destroy(); return }
-  const key = url.searchParams.get('key') || ''
-  if (!KEY_RE.test(key)) { socket.write('HTTP/1.1 400 Bad Request\r\n\r\ninvalid key (16-48 alphanumeric characters)'); socket.destroy(); return }
-  wss.handleUpgrade(req, socket, head, (ws) => registerAgent(ws, key))
+  wss.handleUpgrade(req, socket, head, (ws) => challengeAgent(ws))
 })
 
 function safeSend (ws, obj) {
@@ -150,12 +161,47 @@ function safeSend (ws, obj) {
   return true
 }
 
-function registerAgent (ws, key) {
-  // un agente por llave: reemplaza al anterior.
-  const prev = tunnels.get(key)
-  if (prev && prev.ws !== ws) { try { prev.ws.close(4001, 'replaced') } catch {} }
-  tunnels.set(key, { ws, since: Date.now() })
+/** Manda el reto y espera la prueba. Nada se registra antes de verificarla. */
+function challengeAgent (ws) {
+  const challenge = randomUUID()
   ws.isAlive = true
+  ws.on('pong', () => { ws.isAlive = true })
+  ws.on('error', () => {})
+  const timer = setTimeout(() => reject(ws, 'no-hello'), HELLO_TIMEOUT)
+  ws.once('message', async (data) => {
+    clearTimeout(timer)
+    let m
+    try { m = JSON.parse(data) } catch { return reject(ws, 'shape') }
+    if (m?.type !== 'hello') return reject(ws, 'shape')
+    const reason = await checkHello(m, challenge)
+    if (typeof reason === 'string') return reject(ws, reason)
+    registerAgent(ws, reason)
+  })
+  safeSend(ws, { type: 'challenge', challenge })
+}
+
+/** El motivo del rechazo, o `{ key, profileId }` si la prueba vale. */
+async function checkHello (m, challenge) {
+  const { body, signature, publickey, chain } = m
+  if (!body || body.op !== AGENT_OP || body.v !== AGENT_V) return 'shape'
+  if (body.challenge !== challenge) return 'other-challenge'
+  const v = await verifySignedFor({ data: body, signature, publickey, chain, audience: AUDIENCE })
+  if (!v.ok) return v.reason
+  if (v.seq < (freshest.get(v.profileId) ?? -1)) return 'stale-chain'
+  freshest.set(v.profileId, v.seq)
+  return { key: await tunnelKey(publickey), profileId: v.profileId }
+}
+
+function reject (ws, reason) {
+  console.log(`[agent] rejected: ${reason}`)
+  try { ws.close(CLOSE_REJECTED, String(reason).slice(0, 120)) } catch {}
+}
+
+function registerAgent (ws, { key, profileId }) {
+  // un agente por llave: es el MISMO aparato en dos procesos; gana el último.
+  const prev = tunnels.get(key)
+  if (prev && prev.ws !== ws) { try { prev.ws.close(CLOSE_REPLACED, 'replaced') } catch {} }
+  tunnels.set(key, { ws, since: Date.now(), profileId })
   safeSend(ws, { type: 'ready', key, url: `https://${PUBLIC_HOST}/${key}` })
   console.log(`[agent] connected key=${key} (${tunnels.size} tunnels)`)
 
@@ -165,11 +211,9 @@ function registerAgent (ws, key) {
     if (m.type === 'res') deliverResponse(m)
     else if (m.type === 'pong') ws.isAlive = true
   })
-  ws.on('pong', () => { ws.isAlive = true })
   ws.on('close', () => {
     if (tunnels.get(key)?.ws === ws) { tunnels.delete(key); console.log(`[agent] disconnected key=${key}`) }
   })
-  ws.on('error', () => {})
 }
 
 // Heartbeat: descarta agentes muertos (Cloudflare corta WS ociosos ~100s).
