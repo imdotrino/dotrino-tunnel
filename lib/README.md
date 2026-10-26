@@ -23,6 +23,18 @@ Enrolar pide la invitación de tu bóveda (`dotrino-vault pair`, o el código de
 necesita el permiso `firma` (`sign`), que es el que trae por defecto. El enlace vive en
 `~/.dotrino/agent/tunnel/<name>/` (o `--dir`).
 
+## Se actualiza solo
+
+Instalado con `npm i -g @dotrino/tunnel` (en un prefijo de tu usuario), el túnel mira una
+vez al día si hay versión nueva, la verifica contra el `npm-integrity.json` de su release de
+GitHub, la instala y se reinicia si hay quien lo levante (pm2, systemd). Con `npx` lo dice y
+no instala nada. Por defecto no pide permiso y avisa a tu bóveda; cada túnel lo cambia:
+
+```sh
+dotrino-tunnel update [--name api] --approval on   # pide permiso a tus aparatos «aprueba»
+dotrino-tunnel update [--name api] --notify off    # no avisa de que se actualizó
+```
+
 ## Librería
 
 ```js

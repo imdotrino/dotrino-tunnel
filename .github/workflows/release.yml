@@ -68,11 +68,21 @@ jobs:
         with:
           subject-path: 'lib/sbom-*.cdx.json'
 
+      # §15: el túnel se actualiza solo y verifica lo que baja de npm contra esta medida,
+      # que va a la release de GitHub (otro canal). Se empaqueta UNA vez, se mide ESE
+      # archivo y se publica ESE archivo.
+      - name: Empaquetar
+        run: npm pack
+      - name: Medir lo que se va a publicar
+        run: npx --yes @dotrino/update@latest integrity ./*.tgz > npm-integrity.json
+
       # La procedencia sale sola: npm la genera y la firma, sin `--provenance`.
-      - name: Publicar en npm
-        run: npm publish --access public
+      - name: Publicar en npm ESE archivo
+        run: npm publish ./*.tgz --access public
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: 'lib/sbom-*.cdx.json'
+          files: |
+            lib/sbom-*.cdx.json
+            lib/npm-integrity.json
           generate_release_notes: true
