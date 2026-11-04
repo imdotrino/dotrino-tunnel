@@ -16,7 +16,8 @@ Para atenderla, el agente firma un reto del relay con esa llave y trae la cadena
 que dice que el aparato puede firmar por su cuenta. Así no hay dos túneles con la misma
 dirección ni nadie puede atender la de otro. **Más túneles = más aparatos** en la bóveda
 (`--name`). Quien tenga la URL puede *mandarle* peticiones: sigue siendo un tool de
-dev/testing. Payload limitado a **1 MB** por request/response; timeout 30 s.
+dev/testing. Los cuerpos viajan en binario y por partes: hasta **50 MB** por
+request/response (1 MB para agentes anteriores a 0.5.0); 30 s sin datos cortan el pedido.
 
 ## Dos sabores
 

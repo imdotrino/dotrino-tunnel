@@ -74,6 +74,14 @@ t.close()
 Errores con `code`: `TUNNEL_NO_CHAIN` (la bóveda no contestó y no
 hay cadena guardada), `TUNNEL_KEY_IN_USE` (ese aparato ya está abierto en esta máquina).
 
+## Cómo viajan los datos
+
+Las peticiones y las respuestas van **en binario y por partes** (tramas de 64 KB) por el
+WebSocket del túnel: varios pedidos se intercalan, así que un archivo grande no frena a los
+pequeños, y no hay base64 de por medio. Si quien descarga lee despacio, el agente deja de
+leer el servicio local hasta que se pone al día. Tope por pedido: **50 MB** (`MAX_STREAM` en
+el relay). Un agente anterior a 0.5.0 sigue funcionando con el formato viejo (JSON, 1 MB).
+
 ## Cómo se prueba que el túnel es tuyo
 
 1. La dirección es `tunnelKey(publickey)`: SHA-256 de la pública del aparato, 32 base62.

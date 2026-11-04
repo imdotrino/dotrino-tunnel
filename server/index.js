@@ -24,11 +24,15 @@ import { readFile, stat } from 'node:fs/promises'
 import { join, normalize, extname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { watchCheckout } from '@dotrino/update/checkout'
-import { tunnelKey, KEY_RE, AGENT_OP, AGENT_V, CLOSE_REPLACED, CLOSE_REJECTED } from '../lib/shared.js'
+import { tunnelKey, KEY_RE, AGENT_OP, AGENT_V, CLOSE_REPLACED, CLOSE_REJECTED, STREAM_V, FRAME_REQ, FRAME_RES, CHUNK, bodyFrame, parseBodyFrame } from '../lib/shared.js'
 
 const PORT = Number(process.env.PORT || 7700)
 const HOST = process.env.HOST || '127.0.0.1'
-const MAX_BODY = Number(process.env.MAX_BODY || 1024 * 1024) // 1 MB por request/response
+const MAX_BODY = Number(process.env.MAX_BODY || 1024 * 1024) // 1 MB por request/response (agentes en JSON)
+// Con cuerpos por partes (STREAM_V) el tope es otro: lo pone el costo del VPS, no el formato.
+const MAX_STREAM = Number(process.env.MAX_STREAM || 50 * 1024 * 1024) // 50 MB por request/response
+// Cuánto puede acumular el WebSocket de un agente antes de dejar de leer al cliente que sube.
+const WS_HIGH = 4 * 1024 * 1024
 const REQ_TIMEOUT = Number(process.env.REQ_TIMEOUT || 30000) // 30 s
 const PUBLIC_HOST = process.env.PUBLIC_HOST || 'r.dotrino.com'
 const STATIC_DIR = process.env.STATIC_DIR || join(fileURLToPath(new URL('.', import.meta.url)), 'public')
@@ -36,7 +40,7 @@ const STATIC_DIR = process.env.STATIC_DIR || join(fileURLToPath(new URL('.', imp
 const AUDIENCE = process.env.AUDIENCE || `https://${PUBLIC_HOST}`
 const HELLO_TIMEOUT = 15000 // para contestar al reto
 
-// registry: key -> { ws, since, profileId } ; pending: reqId -> { res, timer }
+// registry: key -> { ws, since, profileId, stream } ; pending: reqId -> { res, timer, ws, stream, sent, paused }
 const tunnels = new Map()
 const pending = new Map()
 // FRESCURA: el `seq` más alto visto por cuenta. Una cadena vieja sigue verificando (es la
@@ -81,8 +85,9 @@ const server = http.createServer(async (req, res) => {
   return serveStatic(req, res, url.pathname)
 })
 
-async function handleTunnelRequest (req, res, key, path) {
+function handleTunnelRequest (req, res, key, path) {
   const tun = tunnels.get(key)
+  if (tun.stream) return streamTunnelRequest(req, res, key, tun, path)
   const chunks = []
   let size = 0
   let aborted = false
@@ -103,13 +108,64 @@ async function handleTunnelRequest (req, res, key, path) {
       pending.delete(id)
       if (!res.headersSent) json(res, 504, { error: 'tunnel timeout' })
     }, REQ_TIMEOUT)
-    pending.set(id, { res, timer })
+    pending.set(id, { res, timer, ws: tun.ws, stream: false })
   })
 }
 
+/**
+ * El pedido de un agente que habla STREAM_V: la cabecera sale en el acto y el cuerpo detrás,
+ * en tramas binarias, sin esperar a tenerlo entero. La respuesta llega igual (`res-head`,
+ * tramas, `res-end`). El temporizador es de INACTIVIDAD: se reinicia con cada trama, así que
+ * un archivo grande que avanza no caduca, y uno que se queda parado sí.
+ */
+function streamTunnelRequest (req, res, key, tun, path) {
+  const { ws } = tun
+  const id = randomUUID()
+  if (!safeSend(ws, { type: 'req-head', id, method: req.method, path, headers: cleanHeaders(req.headers) })) {
+    return json(res, 502, { error: 'tunnel not connected', key })
+  }
+  const p = { res, ws, stream: true, sent: 0, timer: null, done: false }
+  const idle = () => {
+    clearTimeout(p.timer)
+    p.timer = setTimeout(() => finish(504, 'tunnel timeout'), REQ_TIMEOUT)
+  }
+  const finish = (code, error) => {
+    if (p.done) return
+    p.done = true
+    clearTimeout(p.timer); pending.delete(id)
+    safeSend(ws, { type: 'cancel', id })
+    if (!res.headersSent) json(res, code, { error, ...(code === 413 || code === 502 ? { limit: MAX_STREAM } : {}) })
+    else res.destroy()
+  }
+  p.idle = idle
+  p.finish = finish
+  pending.set(id, p)
+  idle()
+
+  let size = 0
+  req.on('data', (c) => {
+    size += c.length
+    if (size > MAX_STREAM) { finish(413, 'payload too large'); req.destroy(); return }
+    for (let i = 0; i < c.length; i += CHUNK) {
+      if (ws.readyState !== ws.OPEN) return finish(502, 'tunnel not connected')
+      ws.send(bodyFrame(FRAME_REQ, id, c.subarray(i, i + CHUNK)))
+    }
+    // El agente lee más despacio de lo que sube el cliente: se deja de leer hasta que baje.
+    if (ws.bufferedAmount > WS_HIGH) {
+      req.pause()
+      const t = setInterval(() => { if (ws.readyState !== ws.OPEN || ws.bufferedAmount < WS_HIGH / 2) { clearInterval(t); req.resume() } }, 20)
+    }
+  })
+  req.on('end', () => { if (!p.done) safeSend(ws, { type: 'req-end', id }) })
+  // El cliente se fue antes de terminar: que el agente deje de leer el servicio local.
+  res.on('close', () => { if (!p.done && !res.writableFinished) finish(499, 'client closed') })
+  res.on('drain', () => { if (p.paused) { p.paused = false; safeSend(ws, { type: 'resume', id }) } })
+}
+
+/** Respuesta de un agente viejo: entera, en base64 dentro del JSON. */
 function deliverResponse (m) {
   const p = pending.get(m.id)
-  if (!p) return
+  if (!p || p.stream) return
   clearTimeout(p.timer); pending.delete(m.id)
   const { res } = p
   // CORS lo decide el agente/host (configurable); el relay solo pasa lo que venga.
@@ -121,6 +177,54 @@ function deliverResponse (m) {
     res.writeHead(m.status || 200, headers)
     res.end(buf)
   } catch { /* cliente ya cerró */ }
+}
+
+/** Respuesta por partes: cabecera, tramas binarias y fin. */
+function onStreamControl (m) {
+  const p = pending.get(m.id)
+  if (!p || !p.stream) return
+  const { res } = p
+  if (m.type === 'res-head') {
+    p.idle()
+    if (res.headersSent) return
+    // Las cabeceras van tal cual, `content-length` incluido: los bytes son los mismos.
+    try { res.writeHead(m.status || 200, cleanHeaders(m.headers)) } catch { p.finish(502, 'bad response head') }
+  } else if (m.type === 'res-end') {
+    p.done = true
+    clearTimeout(p.timer); pending.delete(m.id)
+    if (!res.headersSent) res.writeHead(502, { 'content-type': 'application/json' })
+    res.end()
+  } else if (m.type === 'res-abort') {
+    p.done = true
+    clearTimeout(p.timer); pending.delete(m.id)
+    if (!res.headersSent) json(res, 502, { error: 'tunnel agent: ' + String(m.error || 'aborted').slice(0, 200) })
+    else res.destroy()
+  }
+}
+
+function onResponseFrame (f) {
+  const p = pending.get(f.id)
+  if (!p || !p.stream || p.done) return
+  p.idle()
+  p.sent += f.payload.length
+  if (p.sent > MAX_STREAM) return p.finish(502, 'response too large')
+  if (!p.res.headersSent) return p.finish(502, 'body before head')
+  // El cliente no da abasto: el agente para de leer ese pedido hasta el `drain`.
+  if (!p.res.write(Buffer.from(f.payload.buffer, f.payload.byteOffset, f.payload.length)) && !p.paused) {
+    p.paused = true
+    safeSend(p.ws, { type: 'pause', id: f.id })
+  }
+}
+
+/** El agente se fue: lo que esperaba respuesta falla YA, no a los 30 s. */
+function failPendingOf (ws) {
+  for (const [id, p] of pending) {
+    if (p.ws !== ws) continue
+    clearTimeout(p.timer); pending.delete(id)
+    p.done = true
+    if (!p.res.headersSent) json(p.res, 502, { error: 'tunnel disconnected' })
+    else p.res.destroy()
+  }
 }
 
 /* ---------------- estático (web de testing) ---------------- */
@@ -189,7 +293,7 @@ async function checkHello (m, challenge) {
   if (!v.ok) return v.reason
   if (v.seq < (freshest.get(v.profileId) ?? -1)) return 'stale-chain'
   freshest.set(v.profileId, v.seq)
-  return { key: await tunnelKey(publickey), profileId: v.profileId }
+  return { key: await tunnelKey(publickey), profileId: v.profileId, stream: body.stream === STREAM_V }
 }
 
 function reject (ws, reason) {
@@ -197,21 +301,29 @@ function reject (ws, reason) {
   try { ws.close(CLOSE_REJECTED, String(reason).slice(0, 120)) } catch {}
 }
 
-function registerAgent (ws, { key, profileId }) {
+function registerAgent (ws, { key, profileId, stream }) {
   // un agente por llave: es el MISMO aparato en dos procesos; gana el último.
   const prev = tunnels.get(key)
   if (prev && prev.ws !== ws) { try { prev.ws.close(CLOSE_REPLACED, 'replaced') } catch {} }
-  tunnels.set(key, { ws, since: Date.now(), profileId })
-  safeSend(ws, { type: 'ready', key, url: `https://${PUBLIC_HOST}/${key}` })
-  console.log(`[agent] connected key=${key} (${tunnels.size} tunnels)`)
+  tunnels.set(key, { ws, since: Date.now(), profileId, stream })
+  // `stream` solo si el agente lo pidió: un agente viejo no sabría qué hacer con las tramas.
+  safeSend(ws, { type: 'ready', key, url: `https://${PUBLIC_HOST}/${key}`, ...(stream ? { stream: STREAM_V, maxBody: MAX_STREAM } : {}) })
+  console.log(`[agent] connected key=${key} stream=${stream ? STREAM_V : 0} (${tunnels.size} tunnels)`)
 
-  ws.on('message', (data) => {
+  ws.on('message', (data, isBinary) => {
+    if (isBinary) {
+      const f = parseBodyFrame(data)
+      if (f && f.kind === FRAME_RES) onResponseFrame(f)
+      return
+    }
     let m
     try { m = JSON.parse(data) } catch { return }
     if (m.type === 'res') deliverResponse(m)
+    else if (m.type === 'res-head' || m.type === 'res-end' || m.type === 'res-abort') onStreamControl(m)
     else if (m.type === 'pong') ws.isAlive = true
   })
   ws.on('close', () => {
+    failPendingOf(ws)
     if (tunnels.get(key)?.ws === ws) { tunnels.delete(key); console.log(`[agent] disconnected key=${key}`) }
   })
 }
@@ -228,7 +340,7 @@ hb.unref?.()
 
 server.listen(PORT, HOST, () => {
   console.log(`dotrino-tunnel relay on http://${HOST}:${PORT}  (public: https://${PUBLIC_HOST})`)
-  console.log(`payload limit: ${(MAX_BODY / 1024).toFixed(0)} KB · timeout: ${REQ_TIMEOUT / 1000}s`)
+  console.log(`payload limit: ${(MAX_BODY / 1024).toFixed(0)} KB (json) · ${(MAX_STREAM / 1048576).toFixed(0)} MB (stream) · idle timeout: ${REQ_TIMEOUT / 1000}s`)
   // §15: el relay se despliega desde git; lo que se le queda atrás es el checkout.
   watchCheckout({ dir: fileURLToPath(new URL('.', import.meta.url)), repo: 'imdotrino/dotrino-tunnel', name: 'tunnel-relay' })
 })
