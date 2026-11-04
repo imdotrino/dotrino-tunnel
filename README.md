@@ -7,10 +7,13 @@ sin abrir puertos ni configurar tu router. Un **relay** público recibe las requ
 las reenvía por WebSocket a tu **agente** (tu máquina o el navegador); la respuesta
 vuelve al cliente. Autohospedado y parte del ecosistema.
 
-**Cada túnel es un aparato de tu cuenta.** Se enrola una vez en tu bóveda (como cualquier
-otro aparato) y la dirección pública sale de **su propia llave**: nadie la elige. Para
-atenderla, el agente firma un reto del relay con esa llave y trae la cadena del acta que
-dice que el aparato es de tu cuenta y puede firmar. Así no hay dos túneles con la misma
+**Cada túnel es un aparato con su propia llave**, y la dirección pública sale de ella:
+nadie la elige. **No hace falta bóveda**: la primera vez el túnel genera su identidad (sus
+llaves y un acta autofirmada, una cuenta de un solo aparato). Si después lo emparejas con
+tu bóveda (`enroll`), entra a tu cuenta con **una llave nueva** y otra dirección: una
+llave vive en una sola cuenta.
+Para atenderla, el agente firma un reto del relay con esa llave y trae la cadena del acta
+que dice que el aparato puede firmar por su cuenta. Así no hay dos túneles con la misma
 dirección ni nadie puede atender la de otro. **Más túneles = más aparatos** en la bóveda
 (`--name`). Quien tenga la URL puede *mandarle* peticiones: sigue siendo un tool de
 dev/testing. Payload limitado a **1 MB** por request/response; timeout 30 s.
@@ -21,7 +24,8 @@ dev/testing. Payload limitado a **1 MB** por request/response; timeout 30 s.
 Expón un puerto/handler local desde código o terminal.
 
 ```sh
-npx @dotrino/tunnel 3000                          # la primera vez lo enrola en tu bóveda
+npx @dotrino/tunnel 3000                          # sin bóveda: crea su identidad la 1.ª vez
+npx @dotrino/tunnel enroll                        # opcional: lo pasa a tu cuenta (dirección nueva)
 npx @dotrino/tunnel http://localhost:8080/api --name api   # otro túnel = otro aparato
 npx @dotrino/tunnel info                          # su ID, el de «dotrino-vault members»
 ```

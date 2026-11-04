@@ -3,25 +3,28 @@
 Túnel reverso autohospedado del ecosistema [Dotrino](https://dotrino.com).
 Expón un puerto o servicio local en una URL pública — como código o como CLI.
 
-**Cada túnel es un aparato de tu cuenta.** Se enrola una vez en tu bóveda y su dirección
-sale de su propia llave: nadie puede elegir la dirección de otro ni atenderla. Para un
-segundo túnel, otro aparato (`--name`).
+**Cada túnel es un aparato con su propia llave**, y su dirección sale de ella: nadie puede
+elegir la dirección de otro ni atenderla. **No hace falta bóveda**: la primera vez genera su
+identidad (llaves + acta autofirmada). Emparejarlo después con tu bóveda lo pasa a tu
+cuenta con **una llave nueva**, así que la dirección cambia: una llave vive en una sola
+cuenta. Para un segundo túnel, otro
+aparato (`--name`).
 
 ## CLI
 
 ```sh
-npx @dotrino/tunnel 3000                       # expone http://localhost:3000 (la 1.ª vez lo enrola)
+npx @dotrino/tunnel 3000                       # expone http://localhost:3000 (sin bóveda)
 npx @dotrino/tunnel http://localhost:8080/api  # expone esa URL local
 npx @dotrino/tunnel 3000 --name api            # otro túnel = otro aparato de tu cuenta
-npx @dotrino/tunnel enroll [--name api]        # enrola (o re-enrola) sin abrirlo
+npx @dotrino/tunnel enroll [--name api]        # lo empareja con tu bóveda (dirección nueva)
 npx @dotrino/tunnel info [--name api] [--json] # qué aparato es: su ID
-npx @dotrino/tunnel list                       # los túneles enrolados en esta máquina
+npx @dotrino/tunnel list                       # los túneles de esta máquina
 ```
 
-Enrolar pide la invitación de tu bóveda (`dotrino-vault pair`, o el código de
-`profile.dotrino.com/myvault`) y un código que escribes en ella para aprobarlo. El aparato
-necesita el permiso `firma` (`sign`), que es el que trae por defecto. El enlace vive en
-`~/.dotrino/agent/tunnel/<name>/` (o `--dir`).
+Emparejar pide la invitación de tu bóveda (`dotrino-vault pair`, o el código de
+`profile.dotrino.com/myvault`) y un código que escribes en ella para aprobarlo. Al emparejarlo,
+el túnel recibe una llave y una dirección nuevas (también si ya era de una cuenta). El aparato necesita el permiso `sign`, que es el que trae
+por defecto. El enlace vive en `~/.dotrino/agent/tunnel/<name>/` (o `--dir`).
 
 ## Se actualiza solo
 
@@ -40,7 +43,7 @@ dotrino-tunnel update [--name api] --notify off    # no avisa de que se actualiz
 ```js
 import { createTunnel, enrollTunnel } from '@dotrino/tunnel'
 
-// 1) exponer un puerto local (el aparato «default», ya enrolado)
+// 1) exponer un puerto local (el aparato «default»; sin enlace, crea su identidad)
 const t = await createTunnel({ target: 3000 })
 console.log(t.url)            // https://r.dotrino.com/<llave del aparato>
 
@@ -68,7 +71,7 @@ t.close()
 
 `req` = `{ method, path, headers, body }` (body es `Buffer|null`).
 
-Errores con `code`: `TUNNEL_NOT_ENROLLED`, `TUNNEL_NO_CHAIN` (la bóveda no contestó y no
+Errores con `code`: `TUNNEL_NO_CHAIN` (la bóveda no contestó y no
 hay cadena guardada), `TUNNEL_KEY_IN_USE` (ese aparato ya está abierto en esta máquina).
 
 ## Cómo se prueba que el túnel es tuyo
