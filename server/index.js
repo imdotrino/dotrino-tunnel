@@ -32,7 +32,9 @@ const MAX_BODY = Number(process.env.MAX_BODY || 1024 * 1024) // 1 MB por request
 // Con cuerpos por partes (STREAM_V) el tope es otro: lo pone el costo del VPS, no el formato.
 const MAX_STREAM = Number(process.env.MAX_STREAM || 50 * 1024 * 1024) // 50 MB por request/response
 // Cuánto puede acumular el WebSocket de un agente antes de dejar de leer al cliente que sube.
-const WS_HIGH = 4 * 1024 * 1024
+// Poco a propósito: el ping y el control van en la misma cola, y con una subida de 100 KB/s
+// 4 MB eran 40 s de espera — el latido daba al agente por muerto a mitad de un archivo.
+const WS_HIGH = 512 * 1024
 const REQ_TIMEOUT = Number(process.env.REQ_TIMEOUT || 30000) // 30 s
 const PUBLIC_HOST = process.env.PUBLIC_HOST || 'r.dotrino.com'
 const STATIC_DIR = process.env.STATIC_DIR || join(fileURLToPath(new URL('.', import.meta.url)), 'public')
@@ -145,6 +147,7 @@ function streamTunnelRequest (req, res, key, tun, path) {
 
   let size = 0
   req.on('data', (c) => {
+    p.idle()   // una subida que avanza no caduca
     size += c.length
     if (size > MAX_STREAM) { finish(413, 'payload too large'); req.destroy(); return }
     for (let i = 0; i < c.length; i += CHUNK) {
@@ -312,6 +315,9 @@ function registerAgent (ws, { key, profileId, stream }) {
   console.log(`[agent] connected key=${key} stream=${stream ? STREAM_V : 0} (${tunnels.size} tunnels)`)
 
   ws.on('message', (data, isBinary) => {
+    // Cualquier trama prueba que el agente vive. Con el canal lleno, el pong llega tarde
+    // (va en cola detrás de los datos) y el latido cortaba una conexión que trabajaba.
+    ws.isAlive = true
     if (isBinary) {
       const f = parseBodyFrame(data)
       if (f && f.kind === FRAME_RES) onResponseFrame(f)
