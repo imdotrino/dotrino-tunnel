@@ -132,6 +132,7 @@ function streamTunnelRequest (req, res, key, tun, path) {
   const finish = (code, error) => {
     if (p.done) return
     p.done = true
+    console.log(`[req] ${id.slice(0, 8)} ${req.method} cut: ${code} ${error} (sent ${p.sent} bytes, head ${res.headersSent ? 'sent' : 'not sent'})`)
     clearTimeout(p.timer); pending.delete(id)
     safeSend(ws, { type: 'cancel', id })
     if (!res.headersSent) json(res, code, { error, ...(code === 413 || code === 502 ? { limit: MAX_STREAM } : {}) })
