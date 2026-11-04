@@ -35,6 +35,10 @@ const MAX_STREAM = Number(process.env.MAX_STREAM || 50 * 1024 * 1024) // 50 MB p
 // Poco a propósito: el ping y el control van en la misma cola, y con una subida de 100 KB/s
 // 4 MB eran 40 s de espera — el latido daba al agente por muerto a mitad de un archivo.
 const WS_HIGH = 512 * 1024
+// Cuánto puede esperar en la respuesta al cliente antes de pedirle al agente que pare. NO es el
+// `false` de `res.write()`: ese salta a los 16 KB, y pausar ahí convertía el túnel en «manda
+// una trama y espera la vuelta» — unos 25 KB/s en un enlace de 190 (medido en Glassnote).
+const RES_HIGH = 1024 * 1024
 const REQ_TIMEOUT = Number(process.env.REQ_TIMEOUT || 30000) // 30 s
 const PUBLIC_HOST = process.env.PUBLIC_HOST || 'r.dotrino.com'
 const STATIC_DIR = process.env.STATIC_DIR || join(fileURLToPath(new URL('.', import.meta.url)), 'public')
@@ -214,7 +218,8 @@ function onResponseFrame (f) {
   if (p.sent > MAX_STREAM) return p.finish(502, 'response too large')
   if (!p.res.headersSent) return p.finish(502, 'body before head')
   // El cliente no da abasto: el agente para de leer ese pedido hasta el `drain`.
-  if (!p.res.write(Buffer.from(f.payload.buffer, f.payload.byteOffset, f.payload.length)) && !p.paused) {
+  p.res.write(Buffer.from(f.payload.buffer, f.payload.byteOffset, f.payload.length))
+  if (p.res.writableLength > RES_HIGH && !p.paused) {
     p.paused = true
     safeSend(p.ws, { type: 'pause', id: f.id })
   }
