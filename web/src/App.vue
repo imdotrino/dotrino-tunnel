@@ -41,15 +41,19 @@ const I18N = {
 }
 // El idioma lo lleva <dotrino-topbar>: persiste la preferencia, pone
 // document.documentElement.lang y avisa por `dotrino-lang`. Aqui solo se escucha.
+/** @type {import('vue').Ref<'es' | 'en'>} */
 const lang = ref((navigator.language || 'es').slice(0, 2) === 'en' ? 'en' : 'es')
 const t = computed(() => I18N[lang.value])
+/** @param {CustomEvent<{ lang: 'es' | 'en' }>} e */
 const onLang = (e) => { lang.value = e.detail.lang }
 
 /* ---------------- identidad + relay ---------------- */
 // Este navegador ES el aparato: su llave da la dirección y firma el reto del relay. Por eso
 // ya no hay «nueva llave»: la dirección es la de este navegador y nadie más puede atenderla.
 const RELAY = import.meta.env.VITE_RELAY || location.origin
+/** @type {import('vue').Ref<import('@dotrino/topbar').DotrinoTopbar | null>} */
 const topbar = ref(null)
+/** @type {import('@dotrino/identity').Identity | null} */
 let identity = null           // nunca en un ref: el Proxy de Vue rompe el postMessage
 const key = ref('')
 const publicUrl = computed(() => key.value ? `${RELAY.replace(/\/$/, '')}/${key.value}` : '')
@@ -66,32 +70,46 @@ const corsHeaders = () => corsHeadersFor(cors.value) || {}
 
 /* ---------------- estado WS ---------------- */
 const status = ref('connecting')     // connecting | connected | disconnected | noIdentity | rejected | replaced
+/**
+ * Un pedido recibido, tal como se enseña en la lista.
+ * @typedef {{ id: string, method: string, path: string, headers: Record<string, unknown>, body: string, at: string, open: boolean }} ReceivedRequest
+ */
+/**
+ * Un mensaje del relay. Llega de fuera: se mira `type` antes de nada.
+ * @typedef {{ type?: string, id: string, challenge: string, method: string, path: string, headers?: Record<string, unknown>, body?: string | null }} RelayMessage
+ */
+/** @type {import('vue').Ref<ReceivedRequest[]>} */
 const requests = ref([])
-let ws = null, closed = false, backoff = 500
+/** @type {WebSocket | null} */
+let ws = null
+let closed = false, backoff = 500
 
 function connect () {
   if (closed) return
   status.value = 'connecting'
-  ws = new WebSocket(agentWsUrl(RELAY))
-  ws.onopen = () => { backoff = 500 }
-  ws.onmessage = async (ev) => {
+  const sock = new WebSocket(agentWsUrl(RELAY))
+  ws = sock
+  sock.onopen = () => { backoff = 500 }
+  sock.onmessage = async (ev) => {
+    /** @type {RelayMessage} */
     let m; try { m = JSON.parse(ev.data) } catch { return }
     if (m.type === 'challenge') {
       try { send(await answerChallenge({ signedFor, identity, server: RELAY, challenge: m.challenge })) } catch (e) {
         // `no-chain`: el navegador no tiene con qué probar que es de una cuenta.
-        closed = true; rejectReason.value = e.code || e.message; status.value = 'rejected'; try { ws.close() } catch {}
+        const err = /** @type {Error & { code?: string }} */ (e)
+        closed = true; rejectReason.value = err.code || err.message; status.value = 'rejected'; try { sock.close() } catch {}
       }
     } else if (m.type === 'ready') status.value = 'connected'
     else if (m.type === 'req') onReq(m)
   }
-  ws.onclose = (ev) => {
+  sock.onclose = (ev) => {
     if (closed) return
     // Rechazado o desplazado: reintentar no cambia nada. Se para y se dice.
     if (ev.code === CLOSE_REJECTED) { closed = true; rejectReason.value = ev.reason || 'unknown'; status.value = 'rejected'; return }
     if (ev.code === CLOSE_REPLACED) { closed = true; status.value = 'replaced'; return }
     status.value = 'disconnected'; setTimeout(connect, backoff); backoff = Math.min(backoff * 2, 15000)
   }
-  ws.onerror = () => {}
+  sock.onerror = () => {}
 }
 
 async function start () {
@@ -102,9 +120,12 @@ async function start () {
   connect()
 }
 
+/** @param {string} b */
 const b64ToStr = (b) => { try { return decodeURIComponent(escape(atob(b))) } catch { return atob(b) } }
+/** @param {string} s */
 const strToB64 = (s) => { try { return btoa(unescape(encodeURIComponent(s))) } catch { return btoa(s) } }
 
+/** @param {RelayMessage} m */
 function onReq (m) {
   const bodyStr = m.body ? b64ToStr(m.body) : ''
   requests.value.unshift({ id: m.id, method: m.method, path: m.path, headers: m.headers || {}, body: bodyStr, at: new Date().toLocaleTimeString(lang.value), open: false })
@@ -115,7 +136,10 @@ function onReq (m) {
     return
   }
   // responder
-  let status_ = resStatus.value, headers = { ...corsHeaders() }, outBody
+  let status_ = resStatus.value
+  /** @type {Record<string, string>} */
+  const headers = { ...corsHeaders() }
+  let outBody
   if (resMode.value === 'echo') {
     headers['content-type'] = 'application/json'
     outBody = JSON.stringify({ method: m.method, path: m.path, headers: m.headers, body: bodyStr || null }, null, 2)
@@ -126,6 +150,7 @@ function onReq (m) {
   }
   send({ type: 'res', id: m.id, status: Number(status_) || 200, headers, body: outBody ? strToB64(outBody) : null })
 }
+/** @param {object} obj */
 function send (obj) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)) }
 
 /* ---------------- copiar ---------------- */

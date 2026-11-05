@@ -46,15 +46,42 @@ const STATIC_DIR = process.env.STATIC_DIR || join(fileURLToPath(new URL('.', imp
 const AUDIENCE = process.env.AUDIENCE || `https://${PUBLIC_HOST}`
 const HELLO_TIMEOUT = 15000 // para contestar al reto
 
-// registry: key -> { ws, since, profileId, stream } ; pending: reqId -> { res, timer, ws, stream, sent, paused }
+/** Un WebSocket de agente, con la marca del latido. @typedef {import('ws').WebSocket & { isAlive?: boolean }} AgentSocket */
+/** @typedef {{ ws: AgentSocket, since: number, profileId: string, stream: boolean }} Tunnel */
+/**
+ * Un pedido esperando respuesta del agente.
+ * @typedef {object} Pending
+ * @property {http.ServerResponse} res
+ * @property {AgentSocket} ws
+ * @property {boolean} stream
+ * @property {ReturnType<typeof setTimeout> | undefined} timer
+ * @property {number} [sent]
+ * @property {boolean} [done]
+ * @property {boolean} [paused]
+ * @property {() => void} [idle]
+ * @property {(code: number, error: string) => void} [finish]
+ */
+/**
+ * Un mensaje de control del agente (JSON). Llega de fuera: se mira `type` antes de nada.
+ * @typedef {{ type?: string, id: string, status?: number, headers?: http.IncomingHttpHeaders, body?: string | null, error?: unknown }} AgentMessage
+ */
+
+/** @type {Map<string, Tunnel>} key → agente */
 const tunnels = new Map()
+/** @type {Map<string, Pending>} reqId → pedido */
 const pending = new Map()
 // FRESCURA: el `seq` más alto visto por cuenta. Una cadena vieja sigue verificando (es la
 // limitación declarada de `verifySignedBy`), así que un aparato que ya quitaste podría
 // seguir entrando con la que guardó. Una vez visto un acta más nueva de esa cuenta, lo
 // anterior no entra. En memoria: tras reiniciar el relay se aprende otra vez.
+/** @type {Map<string, number>} */
 const freshest = new Map()
 
+/**
+ * @param {http.ServerResponse} res
+ * @param {number} code
+ * @param {unknown} obj
+ */
 const json = (res, code, obj) => {
   const b = Buffer.from(JSON.stringify(obj))
   res.writeHead(code, { 'content-type': 'application/json', 'content-length': b.length, 'access-control-allow-origin': '*' })
@@ -63,14 +90,19 @@ const json = (res, code, obj) => {
 
 // Cabeceras hop-by-hop que no se reenvían.
 const HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'host'])
+/**
+ * @param {http.IncomingHttpHeaders | undefined} h
+ * @returns {http.OutgoingHttpHeaders}
+ */
 const cleanHeaders = (h) => {
+  /** @type {http.OutgoingHttpHeaders} */
   const out = {}
   for (const [k, v] of Object.entries(h || {})) if (!HOP.has(k.toLowerCase())) out[k] = v
   return out
 }
 
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${PUBLIC_HOST}`)
+  const url = new URL(req.url || '/', `http://${PUBLIC_HOST}`)
   const segs = url.pathname.split('/').filter(Boolean)
   const first = segs[0]
 
@@ -91,13 +123,22 @@ const server = http.createServer(async (req, res) => {
   return serveStatic(req, res, url.pathname)
 })
 
+/**
+ * @param {http.IncomingMessage} req
+ * @param {http.ServerResponse} res
+ * @param {string} key
+ * @param {string} path
+ */
 function handleTunnelRequest (req, res, key, path) {
   const tun = tunnels.get(key)
+  // Quien llama ya comprobó `tunnels.has(key)`, en la misma vuelta.
+  if (!tun) return json(res, 502, { error: 'tunnel not connected', key })
   if (tun.stream) return streamTunnelRequest(req, res, key, tun, path)
+  /** @type {Buffer[]} */
   const chunks = []
   let size = 0
   let aborted = false
-  req.on('data', (c) => {
+  req.on('data', (/** @type {Buffer} */ c) => {
     size += c.length
     if (size > MAX_BODY) { aborted = true; json(res, 413, { error: 'payload too large', limit: MAX_BODY }); req.destroy() }
     else chunks.push(c)
@@ -123,6 +164,12 @@ function handleTunnelRequest (req, res, key, path) {
  * en tramas binarias, sin esperar a tenerlo entero. La respuesta llega igual (`res-head`,
  * tramas, `res-end`). El temporizador es de INACTIVIDAD: se reinicia con cada trama, así que
  * un archivo grande que avanza no caduca, y uno que se queda parado sí.
+ *
+ * @param {http.IncomingMessage} req
+ * @param {http.ServerResponse} res
+ * @param {string} key
+ * @param {Tunnel} tun
+ * @param {string} path
  */
 function streamTunnelRequest (req, res, key, tun, path) {
   const { ws } = tun
@@ -130,11 +177,13 @@ function streamTunnelRequest (req, res, key, tun, path) {
   if (!safeSend(ws, { type: 'req-head', id, method: req.method, path, headers: cleanHeaders(req.headers) })) {
     return json(res, 502, { error: 'tunnel not connected', key })
   }
-  const p = { res, ws, stream: true, sent: 0, timer: null, done: false }
+  /** @type {Pending & { sent: number }} */
+  const p = { res, ws, stream: true, sent: 0, timer: undefined, done: false }
   const idle = () => {
     clearTimeout(p.timer)
     p.timer = setTimeout(() => finish(504, 'tunnel timeout'), REQ_TIMEOUT)
   }
+  /** @param {number} code @param {string} error */
   const finish = (code, error) => {
     if (p.done) return
     p.done = true
@@ -150,8 +199,8 @@ function streamTunnelRequest (req, res, key, tun, path) {
   idle()
 
   let size = 0
-  req.on('data', (c) => {
-    p.idle()   // una subida que avanza no caduca
+  req.on('data', (/** @type {Buffer} */ c) => {
+    idle()   // una subida que avanza no caduca
     size += c.length
     if (size > MAX_STREAM) { finish(413, 'payload too large'); req.destroy(); return }
     for (let i = 0; i < c.length; i += CHUNK) {
@@ -170,7 +219,10 @@ function streamTunnelRequest (req, res, key, tun, path) {
   res.on('drain', () => { if (p.paused) { p.paused = false; safeSend(ws, { type: 'resume', id }) } })
 }
 
-/** Respuesta de un agente viejo: entera, en base64 dentro del JSON. */
+/**
+ * Respuesta de un agente viejo: entera, en base64 dentro del JSON.
+ * @param {AgentMessage} m
+ */
 function deliverResponse (m) {
   const p = pending.get(m.id)
   if (!p || p.stream) return
@@ -187,10 +239,13 @@ function deliverResponse (m) {
   } catch { /* cliente ya cerró */ }
 }
 
-/** Respuesta por partes: cabecera, tramas binarias y fin. */
+/**
+ * Respuesta por partes: cabecera, tramas binarias y fin.
+ * @param {AgentMessage} m
+ */
 function onStreamControl (m) {
   const p = pending.get(m.id)
-  if (!p || !p.stream) return
+  if (!p || !p.stream || !p.idle || !p.finish) return
   const { res } = p
   if (m.type === 'res-head') {
     p.idle()
@@ -210,11 +265,12 @@ function onStreamControl (m) {
   }
 }
 
+/** @param {{ id: string, payload: Uint8Array }} f */
 function onResponseFrame (f) {
   const p = pending.get(f.id)
-  if (!p || !p.stream || p.done) return
+  if (!p || !p.stream || p.done || !p.idle || !p.finish) return
   p.idle()
-  p.sent += f.payload.length
+  p.sent = (p.sent || 0) + f.payload.length
   if (p.sent > MAX_STREAM) return p.finish(502, 'response too large')
   if (!p.res.headersSent) return p.finish(502, 'body before head')
   // El cliente no da abasto: el agente para de leer ese pedido hasta el `drain`.
@@ -225,7 +281,10 @@ function onResponseFrame (f) {
   }
 }
 
-/** El agente se fue: lo que esperaba respuesta falla YA, no a los 30 s. */
+/**
+ * El agente se fue: lo que esperaba respuesta falla YA, no a los 30 s.
+ * @param {AgentSocket} ws
+ */
 function failPendingOf (ws) {
   for (const [id, p] of pending) {
     if (p.ws !== ws) continue
@@ -237,7 +296,13 @@ function failPendingOf (ws) {
 }
 
 /* ---------------- estático (web de testing) ---------------- */
+/** @type {Record<string, string>} */
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.ico': 'image/x-icon', '.woff2': 'font/woff2' }
+/**
+ * @param {http.IncomingMessage} req
+ * @param {http.ServerResponse} res
+ * @param {string} pathname
+ */
 async function serveStatic (req, res, pathname) {
   let rel = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '')
   if (rel === '/' || rel === '\\') rel = '/index.html'
@@ -263,18 +328,26 @@ async function serveStatic (req, res, pathname) {
 /* ---------------- WebSocket de agentes ---------------- */
 const wss = new WebSocketServer({ noServer: true })
 server.on('upgrade', (req, socket, head) => {
-  const url = new URL(req.url, `http://${PUBLIC_HOST}`)
+  const url = new URL(req.url || '/', `http://${PUBLIC_HOST}`)
   if (url.pathname !== '/_agent') { socket.destroy(); return }
   wss.handleUpgrade(req, socket, head, (ws) => challengeAgent(ws))
 })
 
+/**
+ * @param {AgentSocket | null | undefined} ws
+ * @param {object} obj
+ * @returns {boolean}  false si el socket no está abierto
+ */
 function safeSend (ws, obj) {
   if (!ws || ws.readyState !== ws.OPEN) return false
   ws.send(JSON.stringify(obj))
   return true
 }
 
-/** Manda el reto y espera la prueba. Nada se registra antes de verificarla. */
+/**
+ * Manda el reto y espera la prueba. Nada se registra antes de verificarla.
+ * @param {AgentSocket} ws
+ */
 function challengeAgent (ws) {
   const challenge = randomUUID()
   ws.isAlive = true
@@ -284,7 +357,7 @@ function challengeAgent (ws) {
   ws.once('message', async (data) => {
     clearTimeout(timer)
     let m
-    try { m = JSON.parse(data) } catch { return reject(ws, 'shape') }
+    try { m = JSON.parse(String(data)) } catch { return reject(ws, 'shape') }
     if (m?.type !== 'hello') return reject(ws, 'shape')
     const reason = await checkHello(m, challenge)
     if (typeof reason === 'string') return reject(ws, reason)
@@ -293,7 +366,12 @@ function challengeAgent (ws) {
   safeSend(ws, { type: 'challenge', challenge })
 }
 
-/** El motivo del rechazo, o `{ key, profileId }` si la prueba vale. */
+/**
+ * El motivo del rechazo, o `{ key, profileId, stream }` si la prueba vale.
+ * @param {{ body?: { op?: unknown, v?: unknown, challenge?: unknown, stream?: unknown }, signature?: unknown, publickey?: unknown, chain?: unknown }} m
+ * @param {string} challenge
+ * @returns {Promise<string | { key: string, profileId: string, stream: boolean }>}
+ */
 async function checkHello (m, challenge) {
   const { body, signature, publickey, chain } = m
   if (!body || body.op !== AGENT_OP || body.v !== AGENT_V) return 'shape'
@@ -302,14 +380,20 @@ async function checkHello (m, challenge) {
   if (!v.ok) return v.reason
   if (v.seq < (freshest.get(v.profileId) ?? -1)) return 'stale-chain'
   freshest.set(v.profileId, v.seq)
-  return { key: await tunnelKey(publickey), profileId: v.profileId, stream: body.stream === STREAM_V }
+  // verifySignedFor ya comprobó que `publickey` es la llave (texto) que firmó.
+  return { key: await tunnelKey(/** @type {string} */ (publickey)), profileId: v.profileId, stream: body.stream === STREAM_V }
 }
 
+/** @param {AgentSocket} ws @param {string} reason */
 function reject (ws, reason) {
   console.log(`[agent] rejected: ${reason}`)
   try { ws.close(CLOSE_REJECTED, String(reason).slice(0, 120)) } catch {}
 }
 
+/**
+ * @param {AgentSocket} ws
+ * @param {{ key: string, profileId: string, stream: boolean }} who
+ */
 function registerAgent (ws, { key, profileId, stream }) {
   // un agente por llave: es el MISMO aparato en dos procesos; gana el último.
   const prev = tunnels.get(key)
@@ -324,12 +408,14 @@ function registerAgent (ws, { key, profileId, stream }) {
     // (va en cola detrás de los datos) y el latido cortaba una conexión que trabajaba.
     ws.isAlive = true
     if (isBinary) {
-      const f = parseBodyFrame(data)
+      // ws entrega Buffer (binaryType por defecto: 'nodebuffer').
+      const f = parseBodyFrame(/** @type {Buffer} */ (data))
       if (f && f.kind === FRAME_RES) onResponseFrame(f)
       return
     }
+    /** @type {AgentMessage} */
     let m
-    try { m = JSON.parse(data) } catch { return }
+    try { m = JSON.parse(String(data)) } catch { return }
     if (m.type === 'res') deliverResponse(m)
     else if (m.type === 'res-head' || m.type === 'res-end' || m.type === 'res-abort') onStreamControl(m)
     else if (m.type === 'pong') ws.isAlive = true
@@ -342,7 +428,8 @@ function registerAgent (ws, { key, profileId, stream }) {
 
 // Heartbeat: descarta agentes muertos (Cloudflare corta WS ociosos ~100s).
 const hb = setInterval(() => {
-  for (const ws of wss.clients) {
+  for (const client of wss.clients) {
+    const ws = /** @type {AgentSocket} */ (client)
     if (ws.isAlive === false) { try { ws.terminate() } catch {}; continue }
     ws.isAlive = false
     try { ws.ping() } catch {}

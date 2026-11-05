@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "type-check": "tsc --noEmit"
+    "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {
     "@dotrino/identity": "0.127.0",
@@ -24,6 +24,7 @@
     "@vitejs/plugin-vue": "5.2.1",
     "typescript": "5.9.3",
     "vite": "5.4.10",
-    "vite-plugin-pwa": "0.20.5"
+    "vite-plugin-pwa": "0.20.5",
+    "vue-tsc": "3.3.13"
   }
 }

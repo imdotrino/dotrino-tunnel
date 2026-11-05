@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            lib/package-lock.json
+            server/package-lock.json
+            web/package-lock.json
+      - name: lib
+        working-directory: lib
+        run: npm ci && npm run type-check
+      - name: server (relay)
+        working-directory: server
+        run: npm ci && npm run type-check
+      - name: web (probador)
+        working-directory: web
+        run: npm ci && npm run type-check
+      - name: pruebas (levantan el relay)
+        working-directory: lib
+        run: npm test

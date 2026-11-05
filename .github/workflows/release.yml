@@ -50,6 +50,13 @@ jobs:
         working-directory: server
         run: npm ci
 
+      # Los tipos, en modo estricto: lo que no pasa tsc no se publica (el relay importa
+      # lib/shared.js, así que se comprueban los dos).
+      - run: npm run type-check
+      - name: Tipos del relay
+        working-directory: server
+        run: npm run type-check
+
       # LAS PRUEBAS ANTES DE PUBLICAR. Una versión que no pasa su suite no llega a npm.
       - run: npm test
       # El registro de compatibilidad (dotrino-roadmap, CONVENCIONES §14): nada instalado en
