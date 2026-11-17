@@ -97,6 +97,14 @@ jobs:
       - name: Publicar en npm ESE archivo
         run: npm publish ./*.tgz --access public
 
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            lib/sbom-*.cdx.json
+            lib/npm-integrity.json
+            lib/*.tgz.sigstore.json
+          generate_release_notes: true
+
       # EL ESPEJO PROPIO (CONVENCIONES §15.2): el paquete, sus dependencias, la medida y la firma al
       # directorio estático de S3, para que el directorio de fuentes pueda mandar ahí si npm o
       # GitHub fallan. Credenciales por OIDC (rol dotrino-deps-publisher): ningún token guardado.
@@ -112,11 +120,3 @@ jobs:
             --lock mirror-deps/package-lock.json --release npm-integrity.json \
             $(for f in *.tgz.sigstore.json; do echo --release "$f"; done) \
             --upload s3://dotrino-deps ./*.tgz
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            lib/sbom-*.cdx.json
-            lib/npm-integrity.json
-            lib/*.tgz.sigstore.json
-          generate_release_notes: true
